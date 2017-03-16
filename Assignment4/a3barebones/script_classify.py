@@ -1,0 +1,128 @@
+from __future__ import print_function
+from __future__ import print_function
+from __future__ import print_function
+from __future__ import print_function
+from __future__ import division  # floating point division
+import math
+import numpy as np
+
+import dataloader as dtl
+import classalgorithms as algs
+
+
+def rbfNetwork(X, stdev, c):
+    Xfi = []
+    for i in range(X.shape[0]):
+        temp = []
+        for j in range(c.shape[0]):
+            x = np.exp(-(np.linalg.norm(X[i] - c[j]) ** 2) / (2 * (stdev ** 2)))
+            temp.append(x)
+        Xfi.append(temp)
+    # print("After calculation, Xfi is ", Xfi)
+    # print ("NP", np.array(Xfi))
+    return np.array(Xfi)
+
+
+def getaccuracy(ytest, predictions):
+    correct = 0
+    for i in range(len(ytest)):
+        if ytest[i] == predictions[i]:
+            correct += 1
+    return (correct / float(len(ytest))) * 100.0
+
+
+def geterror(ytest, predictions):
+    return 100.0 - getaccuracy(ytest, predictions)
+
+
+if __name__ == '__main__':
+    trainsize = 70000
+    testsize = 30000
+    numruns = 3
+
+    classalgs = {
+        # 'Random': algs.Classifier(),
+        # 'Naive Bayes': algs.NaiveBayes({'usecolumnones': False}),
+        # 'Naive Bayes Ones': algs.NaiveBayes({'usecolumnones': True}),
+        # 'Linear Regression': algs.LinearRegressionClass(),
+        'Logistic Regression': algs.LogitReg(),
+        'Radial Basis Transformation': algs.LogitReg(),
+        # 'L1 Logistic Regression': algs.LogitReg({'regularizer': 'l1'}),
+        # 'L2 Logistic Regression': algs.LogitReg({'regularizer': 'l2'}),
+        # 'ElasticNet Logistic Regression': algs.LogitReg({'regularizer': 'elasticNet'}),
+        # 'Logistic Alternative': algs.LogitRegAlternative(),
+        # 'Neural Network': algs.NeuralNet({'epochs': 100, 'stepsize': 0.01, 'nh': 8, 'ni': 19})
+    }
+    numalgs = len(classalgs)
+
+    parameters = (
+        # {'regwgt': 0.0, 'nh': 4},
+        {'regwgt': 0.01, 'nh': 8},
+        # {'regwgt': 0.05, 'nh': 16},
+        # {'regwgt': 0.1, 'nh': 32},
+    )
+    numparams = len(parameters)
+
+    errors = {}
+    for learnername in classalgs:
+        errors[learnername] = np.zeros((numparams, numruns))
+        # print ("For learner name" + learnername)
+        # + " the errors[] is \n" + str(errors[learnername]))
+
+    for r in range(numruns):
+        trainset, testset = dtl.load_susy(trainsize, testsize)
+        # trainset, testset = dtl.load_susy_complete(trainsize, testsize)
+
+        print('Running on train={0} and test={1} samples for run {2}'.format(trainset[0].shape[0],
+                                                                             testset[0].shape[0], r))
+
+        for p in range(numparams):
+            params = parameters[p]
+            for learnername, learner in classalgs.iteritems():
+                # print ("Learner name", learnername)
+                # print ("Learner", learner)
+                # Reset learner for new parameters
+                learner.reset(params)
+                print('Running learner = ' + learnername + ' on parameters ' + str(learner.getparams()))
+                # Train model
+                # print("Start learning")
+                if learnername == 'Radial Basis Transformation':
+                    centers = []
+                    for i in np.random.randint(0, trainset[0].shape[0], 60):
+                        centers.append(trainset[0][i])
+                    centers = np.array(centers)
+                    # print("Centers are", centers)
+                    for sigma in range(1, 6, 2):
+                        # print("Sigma is", sigma)
+                        learner.learn(rbfNetwork(trainset[0], sigma, centers), trainset[1])
+                        rbfArray = rbfNetwork(testset[0], sigma, centers)
+                        predictions = learner.predict(rbfArray)
+                        print("Predictions\n", predictions)
+                        error = geterror(testset[1], predictions)
+                        print('Error for ' + learnername + ': ' + str(error))
+                        print('Accuracy for ' + learnername + ': ' + str(100 - error))
+                        errors[learnername][p, r] = error
+                else:
+                    # print("Learner name in else", learnername)
+                    learner.learn(trainset[0], trainset[1])
+                    predictions = learner.predict(testset[0])
+                    print("Predictions\n", predictions)
+                    error = geterror(testset[1], predictions)
+                    print('Error for ' + learnername + ': ' + str(error))
+                    print('Accuracy for ' + learnername + ': ' + str(100 - error))
+                    errors[learnername][p, r] = error
+
+    for learnername, learner in classalgs.iteritems():
+        besterror = np.mean(errors[learnername][0, :])
+        bestparams = 0
+        for p in range(numparams):
+            aveerror = np.mean(errors[learnername][p, :])
+            if aveerror < besterror:
+                besterror = aveerror
+                bestparams = p
+
+        # Extract best parameters
+        learner.reset(parameters[bestparams])
+        print('Best parameters for ' + learnername + ': ' + str(learner.getparams()))
+        print('Average error for ' + learnername + ': ' + str(besterror) + ' +- ' + str(
+            1.96 * np.std(errors[learnername][bestparams, :]) / math.sqrt(numruns)))
